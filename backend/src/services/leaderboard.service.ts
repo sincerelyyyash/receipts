@@ -1,100 +1,98 @@
 import { prisma } from "../lib/prisma.ts";
-import { cacheKeys, CACHE_TTL, withCache } from "../lib/cache.ts";
+// CACHING DISABLED - import { cacheKeys, CACHE_TTL, withCache } from "../lib/cache.ts";
 import type { LeaderboardEntry } from "../types/index.ts";
 
 // Get leaderboard ranked by accuracy score
 export const getLeaderboard = async (): Promise<LeaderboardEntry[]> => {
-  const cacheKey = cacheKeys.leaderboard();
-
-  return withCache(cacheKey, CACHE_TTL.LEADERBOARD, async () => {
-    const youtubers = await prisma.youTuber.findMany({
-      where: {
-        avgScore: { gt: 0 },
+  // CACHING DISABLED - using direct query instead of withCache
+  const youtubers = await prisma.youTuber.findMany({
+    where: {
+      avgScore: { gt: 0 },
+    },
+    orderBy: { avgScore: "desc" },
+    include: {
+      _count: {
+        select: { videos: true },
       },
-      orderBy: { avgScore: "desc" },
-      include: {
-        _count: {
-          select: { videos: true },
-        },
-        videos: {
-          where: { analyzed: true },
-          select: { id: true },
-        },
+      videos: {
+        where: { analyzed: true },
+        select: { id: true },
       },
-    });
-
-    return youtubers.map((yt, index) => ({
-      id: yt.id,
-      name: yt.name,
-      channelId: yt.channelId,
-      thumbnailUrl: yt.thumbnailUrl,
-      avgScore: Math.round(yt.avgScore * 100) / 100,
-      totalVideos: yt._count.videos,
-      analyzedVideos: yt.videos.length,
-      totalPredictions: yt.totalPredictions,
-      correctPredictions: yt.correctPredictions,
-      accuracyPercent: Math.round(yt.accuracyPercent * 100) / 100,
-      rank: index + 1,
-    }));
+    },
   });
+
+  return youtubers.map((yt, index) => ({
+    id: yt.id,
+    name: yt.name,
+    channelId: yt.channelId,
+    thumbnailUrl: yt.thumbnailUrl,
+    avgScore: Math.round(yt.avgScore * 100) / 100,
+    totalVideos: yt._count.videos,
+    analyzedVideos: yt.videos.length,
+    totalPredictions: yt.totalPredictions,
+    correctPredictions: yt.correctPredictions,
+    accuracyPercent: Math.round(yt.accuracyPercent * 100) / 100,
+    rank: index + 1,
+  }));
 };
 
 // Get overall platform statistics
 export const getStats = async () => {
-  const cacheKey = "stats:overall";
-
-  return withCache(cacheKey, CACHE_TTL.STATS, async () => {
-    const [
-      youtuberCount,
-      videoCount,
-      analyzedVideoCount,
-      predictionCount,
-      avgScore,
-    ] = await Promise.all([
-      prisma.youTuber.count(),
-      prisma.video.count(),
-      prisma.video.count({ where: { analyzed: true } }),
-      prisma.prediction.count(),
-      prisma.prediction.aggregate({
-        where: { accuracyScore: { not: null } },
-        _avg: { accuracyScore: true },
-      }),
-    ]);
-
-    // Get top 3 most accurate predictors
-    const topPredictors = await prisma.youTuber.findMany({
-      where: { avgScore: { gt: 0 } },
-      orderBy: { avgScore: "desc" },
-      take: 3,
-      select: {
-        id: true,
-        name: true,
-        avgScore: true,
-        thumbnailUrl: true,
-      },
-    });
-
-    // Get prediction type breakdown
-    const predictionTypes = await prisma.prediction.groupBy({
-      by: ["predictionType"],
-      _count: true,
+  // CACHING DISABLED - using direct queries
+  const [
+    youtuberCount,
+    videoCount,
+    analyzedVideoCount,
+    predictionCount,
+    verifiedPredictionCount,
+    avgScore,
+  ] = await Promise.all([
+    prisma.youTuber.count(),
+    prisma.video.count(),
+    prisma.video.count({ where: { analyzed: true } }),
+    prisma.prediction.count(),
+    prisma.prediction.count({ where: { accuracyScore: { not: null } } }),
+    prisma.prediction.aggregate({
+      where: { accuracyScore: { not: null } },
       _avg: { accuracyScore: true },
-    });
+    }),
+  ]);
 
-    return {
-      totalYouTubers: youtuberCount,
-      totalVideos: videoCount,
-      analyzedVideos: analyzedVideoCount,
-      totalPredictions: predictionCount,
-      platformAvgAccuracy: Math.round((avgScore._avg.accuracyScore || 0) * 100) / 100,
-      topPredictors,
-      predictionBreakdown: predictionTypes.map((pt) => ({
-        type: pt.predictionType || "other",
-        count: pt._count,
-        avgAccuracy: Math.round((pt._avg.accuracyScore || 0) * 100) / 100,
-      })),
-    };
+  // Get top 3 most accurate predictors
+  const topPredictors = await prisma.youTuber.findMany({
+    where: { avgScore: { gt: 0 } },
+    orderBy: { avgScore: "desc" },
+    take: 3,
+    select: {
+      id: true,
+      name: true,
+      avgScore: true,
+      thumbnailUrl: true,
+    },
   });
+
+  // Get prediction type breakdown
+  const predictionTypes = await prisma.prediction.groupBy({
+    by: ["predictionType"],
+    _count: true,
+    _avg: { accuracyScore: true },
+  });
+
+  return {
+    totalYouTubers: youtuberCount,
+    totalVideos: videoCount,
+    analyzedVideos: analyzedVideoCount,
+    totalPredictions: predictionCount,
+    verifiedPredictions: verifiedPredictionCount,
+    avgAccuracy: Math.round((avgScore._avg.accuracyScore || 0) * 100) / 100,
+    platformAvgAccuracy: Math.round((avgScore._avg.accuracyScore || 0) * 100) / 100,
+    topPredictors,
+    predictionBreakdown: predictionTypes.map((pt) => ({
+      type: pt.predictionType || "other",
+      count: pt._count,
+      avgAccuracy: Math.round((pt._avg.accuracyScore || 0) * 100) / 100,
+    })),
+  };
 };
 
 // Get YouTuber ranking position

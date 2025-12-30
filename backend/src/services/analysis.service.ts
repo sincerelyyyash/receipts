@@ -48,6 +48,30 @@ export const analyzeVideo = async (videoDbId: string): Promise<AnalysisResult> =
     }
   }
 
+  // Check if transcript is unavailable placeholder
+  if (
+    transcript.length === 1 &&
+    transcript[0]?.text === "TRANSCRIPT_UNAVAILABLE"
+  ) {
+    console.log(`⏭️ Skipping video ${videoDbId} - transcript unavailable`);
+    // Mark as analyzed but with no predictions
+    await prisma.video.update({
+      where: { id: video.id },
+      data: {
+        analyzed: true,
+        analyzedAt: new Date(),
+        avgScore: 0,
+      },
+    });
+    return {
+      videoId: video.id,
+      predictionsFound: 0,
+      predictionsVerified: 0,
+      avgScore: 0,
+      predictions: [],
+    };
+  }
+
   // Get transcript windows for better timestamp extraction
   const transcriptWindows = await getTranscriptWithContext(videoDbId, 5);
 

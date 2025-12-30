@@ -17,8 +17,8 @@ import {
   deleteChannel,
 } from "../services/channel.service.ts";
 import { getChannelAnalysisStatus } from "../services/analysis.service.ts";
-import { getPipelineStatus } from "../lib/queue.ts";
-import { startChannelPipeline } from "../services/pipeline.service.ts";
+import { getPipelineStatus, clearPipelineStatus } from "../lib/queue.ts";
+import { startChannelPipeline, forceStartAnalysis } from "../services/pipeline.service.ts";
 
 const router = Router();
 
@@ -242,6 +242,43 @@ router.post(
       success: true,
       message: `Cache cleared successfully. Removed ${totalCleared} cache entries.`,
       cleared: totalCleared,
+    });
+  })
+);
+
+// POST /api/channels/:id/force-analyze - Force move stuck pipeline to analysis phase
+router.post(
+  "/:id/force-analyze",
+  heavyLimiter,
+  asyncHandler(async (req, res) => {
+    const youtuberId = req.params.id!;
+    
+    // Clear the current pipeline status
+    await clearPipelineStatus(youtuberId);
+    
+    // Start analysis for this channel
+    await forceStartAnalysis(youtuberId);
+
+    res.json({
+      success: true,
+      message: "Analysis phase started. Videos with transcripts will be analyzed.",
+    });
+  })
+);
+
+// POST /api/channels/:id/reset-pipeline - Reset pipeline status to allow restarting
+router.post(
+  "/:id/reset-pipeline",
+  heavyLimiter,
+  asyncHandler(async (req, res) => {
+    const youtuberId = req.params.id!;
+    
+    // Clear the pipeline status
+    await clearPipelineStatus(youtuberId);
+
+    res.json({
+      success: true,
+      message: "Pipeline status reset. You can now start a new pipeline.",
     });
   })
 );

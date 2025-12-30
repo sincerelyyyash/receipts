@@ -126,39 +126,41 @@ const processSyncVideos = async (job: Job<SyncVideosJobData>): Promise<void> => 
 const processFetchTranscript = async (job: Job<FetchTranscriptJobData>): Promise<void> => {
   const { videoId, youtuberId } = job.data;
 
+  let transcriptSuccess = false;
   try {
     await fetchAndSaveTranscript(videoId);
-
-    // Update progress
-    const status = await prisma.video.count({
-      where: { youtuberId, transcript: { not: null } },
-    });
-
-    await updatePipelineStatus(youtuberId, {
-      transcriptsFetched: status,
-      currentStep: `Fetched ${status} transcripts...`,
-    });
-
-    // Check if all transcripts are done
-    const pendingTranscripts = await prisma.video.count({
-      where: { youtuberId, transcript: null },
-    });
-
-    // Get total videos being processed
-    const totalVideos = await prisma.video.count({
-      where: { youtuberId },
-    });
-
-    const processedCount = Math.min(totalVideos, PIPELINE_CONFIG.maxVideosToProcess);
-
-    if (status >= processedCount || pendingTranscripts === 0) {
-      // All transcripts done, queue analysis jobs
-      await queueAnalysisJobs(youtuberId);
-    }
+    transcriptSuccess = true;
   } catch (error) {
     console.error(`Transcript fetch failed for video ${videoId}:`, error);
-    // Don't fail the whole pipeline for one transcript
-    // Just log and continue
+    // Mark video as having failed transcript fetch so we don't retry forever
+    await prisma.video.update({
+      where: { id: videoId },
+      data: { transcript: JSON.stringify([{ text: "TRANSCRIPT_UNAVAILABLE", offsetSec: 0, timestamp: "0:00", duration: 0 }]) },
+    });
+  }
+
+  // Update progress - count all videos that have any transcript (including failed ones)
+  const transcriptsProcessed = await prisma.video.count({
+    where: { youtuberId, transcript: { not: null } },
+  });
+
+  await updatePipelineStatus(youtuberId, {
+    transcriptsFetched: transcriptsProcessed,
+    currentStep: `Processed ${transcriptsProcessed} transcripts${transcriptSuccess ? '' : ' (some unavailable)'}...`,
+  });
+
+  // Check if this is the last transcript job in the queue
+  const pendingJobs = await pipelineQueue.getWaiting();
+  const activeJobs = await pipelineQueue.getActive();
+  
+  const pendingTranscriptJobs = [...pendingJobs, ...activeJobs].filter(
+    (j) => j.data.type === 'fetch-transcript' && j.data.youtuberId === youtuberId && j.id !== job.id
+  );
+
+  // If no more transcript jobs for this YouTuber, move to analysis
+  if (pendingTranscriptJobs.length === 0) {
+    console.log(`📝 All transcript jobs completed for ${youtuberId}, moving to analysis...`);
+    await queueAnalysisJobs(youtuberId);
   }
 };
 
@@ -328,12 +330,129 @@ export const isPipelineRunning = async (youtuberId: string): Promise<boolean> =>
   return ["syncing", "fetching-transcripts", "analyzing"].includes(parsed.status);
 };
 
+// Force start analysis for a specific channel (for stuck pipelines)
+export const forceStartAnalysis = async (youtuberId: string): Promise<void> => {
+  const youtuber = await prisma.youTuber.findUnique({
+    where: { id: youtuberId },
+  });
+
+  if (!youtuber) {
+    console.error(`YouTuber not found: ${youtuberId}`);
+    return;
+  }
+
+  console.log(`🔧 Force starting analysis for ${youtuber.name}...`);
+
+  // Get videos with transcripts that haven't been analyzed
+  const videosToAnalyze = await prisma.video.findMany({
+    where: {
+      youtuberId,
+      transcript: { not: null },
+      analyzed: false,
+    },
+    select: { id: true, title: true },
+    orderBy: { publishedAt: "desc" },
+    take: PIPELINE_CONFIG.maxVideosToProcess,
+  });
+
+  // Also get videos without transcripts and mark them with placeholder
+  const videosWithoutTranscripts = await prisma.video.findMany({
+    where: {
+      youtuberId,
+      transcript: null,
+    },
+    select: { id: true },
+  });
+
+  // Mark videos without transcripts so they don't block future runs
+  for (const video of videosWithoutTranscripts) {
+    await prisma.video.update({
+      where: { id: video.id },
+      data: { 
+        transcript: JSON.stringify([{ text: "TRANSCRIPT_UNAVAILABLE", offsetSec: 0, timestamp: "0:00", duration: 0 }]) 
+      },
+    });
+  }
+
+  if (videosToAnalyze.length === 0) {
+    console.log(`✅ No videos to analyze for ${youtuber.name}`);
+    await updatePipelineStatus(youtuberId, {
+      status: "completed",
+      currentStep: "No videos with valid transcripts to analyze.",
+      completedAt: new Date().toISOString(),
+    });
+    return;
+  }
+
+  console.log(`📊 Found ${videosToAnalyze.length} videos to analyze for ${youtuber.name}`);
+
+  // Update pipeline status
+  await updatePipelineStatus(youtuberId, {
+    status: "analyzing",
+    totalVideos: videosToAnalyze.length,
+    transcriptsFetched: videosToAnalyze.length,
+    videosAnalyzed: 0,
+    currentStep: `Starting analysis of ${videosToAnalyze.length} videos...`,
+    startedAt: new Date().toISOString(),
+  });
+
+  // Queue analysis jobs with delays
+  for (let i = 0; i < videosToAnalyze.length; i++) {
+    await addJob(
+      {
+        type: "analyze-video",
+        videoId: videosToAnalyze[i]!.id,
+        youtuberId,
+      },
+      { delay: i * PIPELINE_CONFIG.delayBetweenAnalysis }
+    );
+  }
+
+  // Queue completion job
+  await addJob(
+    {
+      type: "complete-pipeline",
+      youtuberId,
+    },
+    { delay: videosToAnalyze.length * PIPELINE_CONFIG.delayBetweenAnalysis + 5000 }
+  );
+
+  console.log(`🚀 Queued ${videosToAnalyze.length} analysis jobs for ${youtuber.name}`);
+};
+
 // Auto-analyze unanalyzed videos on server startup
 export const runStartupAnalysis = async (): Promise<void> => {
-  console.log("🔍 Checking for unanalyzed videos...");
+  console.log("🔍 Checking for stuck pipelines and unanalyzed videos...");
 
   try {
-    // Find videos with transcripts that haven't been analyzed
+    // First, check for stuck pipelines (status is fetching-transcripts but no jobs in queue)
+    const youtubers = await prisma.youTuber.findMany({
+      select: { id: true, name: true },
+    });
+
+    for (const youtuber of youtubers) {
+      const pipelineStatus = await redis.get(`pipeline:status:${youtuber.id}`);
+      if (pipelineStatus) {
+        const status = JSON.parse(pipelineStatus);
+        if (status.status === "fetching-transcripts") {
+          // Check if there are any pending transcript jobs
+          const pendingJobs = await pipelineQueue.getWaiting();
+          const activeJobs = await pipelineQueue.getActive();
+          const allJobs = [...pendingJobs, ...activeJobs];
+          
+          const transcriptJobsForYouTuber = allJobs.filter(
+            (j) => j.data.type === "fetch-transcript" && j.data.youtuberId === youtuber.id
+          );
+
+          if (transcriptJobsForYouTuber.length === 0) {
+            console.log(`🔧 Found stuck pipeline for ${youtuber.name} - forcing to analysis phase`);
+            await forceStartAnalysis(youtuber.id);
+          }
+        }
+      }
+    }
+
+    // Then, find videos with transcripts that haven't been analyzed
     const unanalyzedVideos = await prisma.video.findMany({
       where: {
         transcript: { not: null },

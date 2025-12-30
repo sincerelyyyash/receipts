@@ -25,7 +25,7 @@ import {
   RefreshCw,
   Video as VideoIcon,
 } from 'lucide-react';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 interface ChannelContentProps {
   channelId: string;
@@ -40,17 +40,29 @@ export const ChannelContent = ({ channelId }: ChannelContentProps) => {
     null
   );
   const [isStartingPipeline, setIsStartingPipeline] = useState(false);
+  
+  // Use refs to track if we've already fetched and to store stable function refs
+  const hasFetchedRef = useRef(false);
+  const channelIdRef = useRef(channelId);
 
-  const fetchData = useCallback(async () => {
-    if (!channelId) return;
+  // Update ref when channelId changes
+  useEffect(() => {
+    channelIdRef.current = channelId;
+  }, [channelId]);
+
+  const fetchData = useCallback(async (showLoading = true) => {
+    const currentChannelId = channelIdRef.current;
+    if (!currentChannelId) return;
 
     try {
-      setIsLoading(true);
+      if (showLoading) {
+        setIsLoading(true);
+      }
       setError(null);
 
       const [channelRes, videosRes] = await Promise.all([
-        getChannel(channelId),
-        getChannelVideos(channelId, 1, 50),
+        getChannel(currentChannelId),
+        getChannelVideos(currentChannelId, 1, 50),
       ]);
 
       if (channelRes.success && channelRes.data) {
@@ -67,25 +79,45 @@ export const ChannelContent = ({ channelId }: ChannelContentProps) => {
     } finally {
       setIsLoading(false);
     }
-  }, [channelId]);
+  }, []);
 
   const fetchPipelineStatus = useCallback(async () => {
-    if (!channelId) return;
+    const currentChannelId = channelIdRef.current;
+    if (!currentChannelId) return;
 
     try {
-      const res = await getPipelineStatus(channelId);
+      const res = await getPipelineStatus(currentChannelId);
       if (res.success && res.data) {
-        setPipelineStatus(res.data);
+        // Only update if status actually changed to prevent unnecessary re-renders
+        setPipelineStatus((prev) => {
+          if (!prev) return res.data;
+          if (
+            prev.status === res.data.status &&
+            prev.videosAnalyzed === res.data.videosAnalyzed &&
+            prev.transcriptsFetched === res.data.transcriptsFetched
+          ) {
+            return prev; // Return same reference if nothing changed
+          }
+          return res.data;
+        });
       }
     } catch (err) {
       console.error('Failed to fetch pipeline status:', err);
     }
+  }, []);
+
+  // Initial data fetch - only once per channelId
+  useEffect(() => {
+    hasFetchedRef.current = false;
   }, [channelId]);
 
   useEffect(() => {
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
+    
     fetchData();
     fetchPipelineStatus();
-  }, [fetchData, fetchPipelineStatus]);
+  }, [channelId, fetchData, fetchPipelineStatus]);
 
   // Poll for pipeline status when processing
   useEffect(() => {
@@ -99,16 +131,16 @@ export const ChannelContent = ({ channelId }: ChannelContentProps) => {
 
     const interval = setInterval(() => {
       fetchPipelineStatus();
-      fetchData(); // Also refresh data to show new videos
+      fetchData(false); // Don't show loading during polling
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [pipelineStatus, fetchPipelineStatus, fetchData]);
+  }, [pipelineStatus?.status, fetchPipelineStatus, fetchData]);
 
-  const handleDataUpdate = () => {
-    fetchData();
+  const handleDataUpdate = useCallback(() => {
+    fetchData(false);
     fetchPipelineStatus();
-  };
+  }, [fetchData, fetchPipelineStatus]);
 
   const handleStartPipeline = async () => {
     setIsStartingPipeline(true);

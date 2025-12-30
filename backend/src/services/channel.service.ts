@@ -1,8 +1,8 @@
 import { prisma } from "../lib/prisma.ts";
 import {
-  cacheKeys,
-  CACHE_TTL,
-  withCache,
+  // CACHING DISABLED - cacheKeys,
+  // CACHING DISABLED - CACHE_TTL,
+  // CACHING DISABLED - withCache,
   invalidateChannelCache,
 } from "../lib/cache.ts";
 import {
@@ -110,18 +110,8 @@ export const syncChannelVideos = async (
     throw new NotFoundError("YouTuber");
   }
 
-  // Create cache key based on year for granular caching
-  const fromYear = from.getFullYear();
-  const toYear = to.getFullYear();
-  const cacheKey = cacheKeys.channelVideos(
-    youtuber.channelId,
-    fromYear === toYear ? fromYear : 0
-  );
-
-  // Try to use cached data if available
-  const videos = await withCache(cacheKey, CACHE_TTL.VIDEO_LIST, async () => {
-    return fetchChannelVideos(youtuber.channelId, from, to, 100);
-  });
+  // CACHING DISABLED - fetch directly from YouTube
+  const videos = await fetchChannelVideos(youtuber.channelId, from, to, 100);
 
   // Upsert videos to database
   const upsertedVideos = await Promise.all(

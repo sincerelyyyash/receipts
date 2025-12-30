@@ -18,6 +18,7 @@ const fetchApi = async <T>(
 ): Promise<T> => {
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      cache: 'no-store', // Disable Next.js caching
       headers: {
         'Content-Type': 'application/json',
         ...options?.headers,
