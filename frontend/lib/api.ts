@@ -16,21 +16,42 @@ const fetchApi = async <T>(
   endpoint: string,
   options?: RequestInit,
 ): Promise<T> => {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-    ...options,
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+      ...options,
+    });
 
-  const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      // If response is not JSON, return error
+      return {
+        success: false,
+        error: `Server returned ${response.status} ${response.statusText}`,
+      } as T;
+    }
 
-  if (!response.ok) {
-    throw new Error(data.error || 'An error occurred');
+    if (!response.ok) {
+      // Return error response structure instead of throwing
+      return {
+        success: false,
+        error: data.error || `Server returned ${response.status} ${response.statusText}`,
+      } as T;
+    }
+
+    return data;
+  } catch (err) {
+    // Handle network errors or other fetch errors
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Network error occurred',
+    } as T;
   }
-
-  return data;
 };
 
 // Health check

@@ -63,8 +63,20 @@ const shutdown = async () => {
 
   try {
     if (pipelineWorker) {
+      // Get active jobs count before closing
+      const { pipelineQueue } = await import("./lib/queue.ts");
+      const activeCount = await pipelineQueue.getActiveCount();
+      const waitingCount = await pipelineQueue.getWaitingCount();
+      
+      if (activeCount > 0 || waitingCount > 0) {
+        console.log(`⏳ Waiting for ${activeCount} active job(s) and ${waitingCount} queued job(s) to complete...`);
+        console.log("ℹ️  Jobs will be retried automatically if interrupted");
+      }
+
+      // Close worker - this will wait for active jobs to complete (with timeout)
+      // BullMQ will automatically move active jobs back to waiting if worker dies
       await pipelineWorker.close();
-      console.log("✅ Pipeline worker stopped");
+      console.log("✅ Pipeline worker stopped gracefully");
     }
   } catch (error) {
     console.error("Pipeline worker stop error:", error);

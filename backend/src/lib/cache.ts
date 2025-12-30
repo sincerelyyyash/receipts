@@ -71,7 +71,13 @@ export const deleteByPattern = async (pattern: string): Promise<void> => {
 export const invalidateChannelCache = async (
   channelId: string
 ): Promise<void> => {
+  // Invalidate response cache (used by cacheResponse middleware)
+  await deleteByPattern(`response:channel:${channelId}*`);
+  await deleteByPattern(`response:/api/channels/${channelId}*`);
+  // Invalidate data cache
   await deleteByPattern(`channel:${channelId}*`);
+  // Invalidate list cache
+  await deleteByPattern(`response:/api/channels`);
   await deleteFromCache(cacheKeys.leaderboard());
 };
 

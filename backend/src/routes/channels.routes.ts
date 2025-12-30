@@ -5,8 +5,8 @@ import {
   ValidationError,
 } from "../middleware/errorHandler.ts";
 import { heavyLimiter, apiLimiter } from "../middleware/rateLimiter.ts";
-import { cacheResponse } from "../middleware/cacheMiddleware.ts";
-import { CACHE_TTL } from "../lib/cache.ts";
+import { cacheResponse, invalidateCachePatterns } from "../middleware/cacheMiddleware.ts";
+import { CACHE_TTL, invalidateChannelCache } from "../lib/cache.ts";
 import {
   addChannel,
   getAllChannels,
@@ -79,6 +79,7 @@ router.get(
 router.post(
   "/",
   heavyLimiter,
+  invalidateCachePatterns(["response:/api/channels", "response:/api/leaderboard"]),
   asyncHandler(async (req, res) => {
     const result = addChannelSchema.safeParse(req.body);
     if (!result.success) {
@@ -156,7 +157,13 @@ router.delete(
   "/:id",
   heavyLimiter,
   asyncHandler(async (req, res) => {
-    await deleteChannel(req.params.id!);
+    const channelId = req.params.id!;
+    await deleteChannel(channelId);
+    await invalidateChannelCache(channelId);
+    // Also invalidate list and leaderboard caches
+    const { deleteByPattern } = await import("../lib/cache.ts");
+    await deleteByPattern("response:/api/channels");
+    await deleteByPattern("response:/api/leaderboard");
 
     res.json({
       success: true,
@@ -196,6 +203,24 @@ router.post(
     res.json({
       success: true,
       message: "Pipeline started",
+    });
+  })
+);
+
+// POST /api/channels/clear-cache - Clear all channel-related cache (admin endpoint)
+router.post(
+  "/clear-cache",
+  heavyLimiter,
+  asyncHandler(async (req, res) => {
+    const { deleteByPattern } = await import("../lib/cache.ts");
+    
+    // Clear all response caches
+    await deleteByPattern("response:/api/channels*");
+    await deleteByPattern("response:channel:*");
+    
+    res.json({
+      success: true,
+      message: "Cache cleared successfully",
     });
   })
 );
