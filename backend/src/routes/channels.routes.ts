@@ -7,6 +7,7 @@ import {
 import { heavyLimiter, apiLimiter } from "../middleware/rateLimiter.ts";
 import { cacheResponse, invalidateCachePatterns } from "../middleware/cacheMiddleware.ts";
 import { CACHE_TTL, invalidateChannelCache } from "../lib/cache.ts";
+import { redis } from "../config/redis.ts";
 import {
   addChannel,
   getAllChannels,
@@ -212,15 +213,35 @@ router.post(
   "/clear-cache",
   heavyLimiter,
   asyncHandler(async (req, res) => {
-    const { deleteByPattern } = await import("../lib/cache.ts");
+    const { deleteByPattern, deleteFromCache } = await import("../lib/cache.ts");
+    const { cacheKeys } = await import("../lib/cache.ts");
     
-    // Clear all response caches
-    await deleteByPattern("response:/api/channels*");
-    await deleteByPattern("response:channel:*");
+    // Clear all response caches (multiple patterns to catch all variations)
+    const patterns = [
+      "response:/api/channels*",
+      "response:channel:*",
+      "response:/api/channels/",
+      "channel:*",
+      "response:/api/leaderboard*",
+      "response:/api/videos*",
+    ];
+    
+    let totalCleared = 0;
+    for (const pattern of patterns) {
+      const keys = await redis.keys(pattern);
+      if (keys.length > 0) {
+        await redis.del(...keys);
+        totalCleared += keys.length;
+      }
+    }
+    
+    // Also clear specific cache keys
+    await deleteFromCache(cacheKeys.leaderboard());
     
     res.json({
       success: true,
-      message: "Cache cleared successfully",
+      message: `Cache cleared successfully. Removed ${totalCleared} cache entries.`,
+      cleared: totalCleared,
     });
   })
 );
