@@ -59,7 +59,7 @@ Receipts is an open-source platform that automatically tracks financial predicti
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/receipts.git
+git clone https://github.com/sincerelyyyash/receipts.git
 cd receipts
 ```
 
@@ -298,7 +298,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **sincerelyyyash**
 
 - Portfolio: [sincerelyyyash.com](https://sincerelyyyash.com)
-- GitHub: [@yourusername](https://github.com/yourusername)
+- GitHub: [@sincerelyyyash](https://github.com/sincerelyyyash)
 
 ## 🙏 Acknowledgments
 
