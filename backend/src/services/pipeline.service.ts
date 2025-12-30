@@ -127,15 +127,43 @@ const processFetchTranscript = async (job: Job<FetchTranscriptJobData>): Promise
   const { videoId, youtuberId } = job.data;
 
   let transcriptSuccess = false;
+  let errorReason = "";
+
   try {
     await fetchAndSaveTranscript(videoId);
     transcriptSuccess = true;
   } catch (error) {
-    console.error(`Transcript fetch failed for video ${videoId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    errorReason = errorMessage;
+
+    // Detailed error classification
+    let errorType = "Unknown error";
+    if (errorMessage.includes("No transcripts available") || errorMessage.includes("Could not find")) {
+      errorType = "No captions available (tried multiple languages)";
+    } else if (errorMessage.includes("disabled")) {
+      errorType = "Captions disabled by uploader";
+    } else if (errorMessage.includes("private") || errorMessage.includes("unavailable")) {
+      errorType = "Video unavailable or private";
+    } else if (errorMessage.includes("rate limit") || errorMessage.includes("429")) {
+      errorType = "Rate limited (will retry later)";
+    }
+
+    console.error(`❌ Transcript failed for video ${videoId}: ${errorType}`);
+
     // Mark video as having failed transcript fetch so we don't retry forever
+    // Store the error reason in the transcript field for debugging
     await prisma.video.update({
       where: { id: videoId },
-      data: { transcript: JSON.stringify([{ text: "TRANSCRIPT_UNAVAILABLE", offsetSec: 0, timestamp: "0:00", duration: 0 }]) },
+      data: { 
+        transcript: JSON.stringify([{ 
+          text: "TRANSCRIPT_UNAVAILABLE", 
+          offsetSec: 0, 
+          timestamp: "0:00", 
+          duration: 0,
+          error: errorType 
+        }]),
+        transcriptFetchedAt: new Date(),
+      },
     });
   }
 
@@ -144,9 +172,13 @@ const processFetchTranscript = async (job: Job<FetchTranscriptJobData>): Promise
     where: { youtuberId, transcript: { not: null } },
   });
 
+  const totalVideos = await prisma.video.count({
+    where: { youtuberId },
+  });
+
   await updatePipelineStatus(youtuberId, {
     transcriptsFetched: transcriptsProcessed,
-    currentStep: `Processed ${transcriptsProcessed} transcripts${transcriptSuccess ? '' : ' (some unavailable)'}...`,
+    currentStep: `Processed ${transcriptsProcessed}/${totalVideos} transcripts${transcriptSuccess ? '' : ' (some unavailable)'}...`,
   });
 
   // Check if this is the last transcript job in the queue
@@ -365,13 +397,23 @@ export const forceStartAnalysis = async (youtuberId: string): Promise<void> => {
   });
 
   // Mark videos without transcripts so they don't block future runs
-  for (const video of videosWithoutTranscripts) {
-    await prisma.video.update({
-      where: { id: video.id },
-      data: { 
-        transcript: JSON.stringify([{ text: "TRANSCRIPT_UNAVAILABLE", offsetSec: 0, timestamp: "0:00", duration: 0 }]) 
-      },
-    });
+  if (videosWithoutTranscripts.length > 0) {
+    console.log(`⚠️ Marking ${videosWithoutTranscripts.length} videos without transcripts as unavailable`);
+    for (const video of videosWithoutTranscripts) {
+      await prisma.video.update({
+        where: { id: video.id },
+        data: { 
+          transcript: JSON.stringify([{ 
+            text: "TRANSCRIPT_UNAVAILABLE", 
+            offsetSec: 0, 
+            timestamp: "0:00", 
+            duration: 0,
+            error: "Not fetched during initial pipeline run"
+          }]),
+          transcriptFetchedAt: new Date(),
+        },
+      });
+    }
   }
 
   if (videosToAnalyze.length === 0) {

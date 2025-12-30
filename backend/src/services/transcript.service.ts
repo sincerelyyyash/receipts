@@ -9,6 +9,45 @@ import {
 import { NotFoundError, ExternalServiceError } from "../middleware/errorHandler.ts";
 import type { TranscriptSegment } from "../types/index.ts";
 
+// Transcript fetching configuration
+const TRANSCRIPT_CONFIG = {
+  // Try multiple language codes in order of preference
+  languageCodes: [
+    "en",      // English
+    "en-US",   // English (US)
+    "en-GB",   // English (UK)
+    "a.en",    // Auto-generated English
+    "hi",      // Hindi (common for Indian finance YouTubers)
+    "es",      // Spanish
+    "pt",      // Portuguese
+    "de",      // German
+    "fr",      // French
+    "ja",      // Japanese
+    "ko",      // Korean
+  ],
+  maxRetries: 3,
+  retryDelay: 2000, // 2 seconds
+  backoffMultiplier: 2,
+};
+
+// Sleep helper for retry delays
+const sleep = (ms: number): Promise<void> => 
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+// Check if error is transient (should retry) or permanent
+const isTransientError = (error: Error): boolean => {
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("network") ||
+    message.includes("timeout") ||
+    message.includes("econnreset") ||
+    message.includes("rate limit") ||
+    message.includes("429") ||
+    message.includes("503") ||
+    message.includes("temporarily")
+  );
+};
+
 // Format seconds to timestamp string (MM:SS or HH:MM:SS)
 const formatTimestamp = (totalSeconds: number): string => {
   const hours = Math.floor(totalSeconds / 3600);
@@ -23,7 +62,7 @@ const formatTimestamp = (totalSeconds: number): string => {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 };
 
-// Fetch transcript from YouTube
+// Fetch transcript from YouTube with language fallbacks and retry logic
 export const fetchTranscript = async (
   videoId: string
 ): Promise<TranscriptSegment[]> => {
@@ -35,54 +74,124 @@ export const fetchTranscript = async (
     return cached;
   }
 
-  try {
-    // Fetch from YouTube (no API key needed)
-    const rawTranscript = await YoutubeTranscript.fetchTranscript(videoId);
+  const attemptedLanguages: string[] = [];
+  let lastError: Error | null = null;
 
-    const transcript: TranscriptSegment[] = rawTranscript.map((segment) => {
-      const offsetSec = Math.floor(segment.offset / 1000);
-      return {
-        text: segment.text,
-        offsetSec,
-        timestamp: formatTimestamp(offsetSec),
-        duration: segment.duration,
-      };
-    });
+  // Try each language code with retry logic
+  for (const langCode of TRANSCRIPT_CONFIG.languageCodes) {
+    attemptedLanguages.push(langCode);
+    
+    // Retry logic for each language
+    for (let attempt = 1; attempt <= TRANSCRIPT_CONFIG.maxRetries; attempt++) {
+      try {
+        // Fetch from YouTube with specific language
+        const rawTranscript = await YoutubeTranscript.fetchTranscript(videoId, {
+          lang: langCode,
+        });
 
-    // Cache the transcript
-    await setInCache(cacheKey, transcript, CACHE_TTL.TRANSCRIPT);
+        // Successfully fetched - transform and cache
+        const transcript: TranscriptSegment[] = rawTranscript.map((segment) => {
+          const offsetSec = Math.floor(segment.offset / 1000);
+          return {
+            text: segment.text,
+            offsetSec,
+            timestamp: formatTimestamp(offsetSec),
+            duration: segment.duration,
+          };
+        });
 
-    return transcript;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    throw new ExternalServiceError("YouTube Transcript", message);
+        // Cache the transcript
+        await setInCache(cacheKey, transcript, CACHE_TTL.TRANSCRIPT);
+
+        console.log(`✅ Transcript fetched for ${videoId} using language: ${langCode}`);
+        return transcript;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error("Unknown error");
+        const errorMsg = lastError.message;
+
+        // Check if this is a permanent error (no captions for this language)
+        if (
+          errorMsg.includes("Could not find") ||
+          errorMsg.includes("No transcript") ||
+          errorMsg.includes("Subtitles are disabled") ||
+          errorMsg.includes("disabled for this video")
+        ) {
+          // This language doesn't exist, try next language
+          break;
+        }
+
+        // Check if this is a transient error that should be retried
+        if (isTransientError(lastError) && attempt < TRANSCRIPT_CONFIG.maxRetries) {
+          const delay = TRANSCRIPT_CONFIG.retryDelay * Math.pow(TRANSCRIPT_CONFIG.backoffMultiplier, attempt - 1);
+          console.log(`⚠️ Transient error for ${videoId} (${langCode}), attempt ${attempt}/${TRANSCRIPT_CONFIG.maxRetries}. Retrying in ${delay}ms...`);
+          await sleep(delay);
+          continue;
+        }
+
+        // Other error or max retries reached, try next language
+        break;
+      }
+    }
   }
+
+  // All languages and retries exhausted
+  const errorMessage = lastError?.message || "Unknown error";
+  console.error(`❌ Failed to fetch transcript for ${videoId} after trying languages: ${attemptedLanguages.join(", ")}. Last error: ${errorMessage}`);
+  
+  throw new ExternalServiceError(
+    "YouTube Transcript",
+    `No transcripts available. Tried languages: ${attemptedLanguages.join(", ")}. Error: ${errorMessage}`
+  );
 };
 
-// Fetch and save transcript to database
+// Fetch and save transcript to database with detailed error logging
 export const fetchAndSaveTranscript = async (videoDbId: string) => {
-  // Get video from database
+  // Get video from database with metadata for better logging
   const video = await prisma.video.findUnique({
     where: { id: videoDbId },
+    include: {
+      youtuber: {
+        select: { name: true },
+      },
+    },
   });
 
   if (!video) {
     throw new NotFoundError("Video");
   }
 
-  // Fetch transcript using YouTube video ID
-  const transcript = await fetchTranscript(video.videoId);
+  try {
+    // Fetch transcript using YouTube video ID
+    const transcript = await fetchTranscript(video.videoId);
 
-  // Save to database
-  await prisma.video.update({
-    where: { id: videoDbId },
-    data: {
-      transcript: JSON.stringify(transcript),
-      transcriptFetchedAt: new Date(),
-    },
-  });
+    // Save to database
+    await prisma.video.update({
+      where: { id: videoDbId },
+      data: {
+        transcript: JSON.stringify(transcript),
+        transcriptFetchedAt: new Date(),
+      },
+    });
 
-  return transcript;
+    console.log(`📝 Saved transcript for: ${video.title} (${video.youtuber.name})`);
+    return transcript;
+  } catch (error) {
+    // Log detailed error information
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const videoDate = video.publishedAt.toISOString().split('T')[0];
+    
+    console.error(`❌ Transcript fetch failed for video:
+      - Title: ${video.title}
+      - Channel: ${video.youtuber.name}
+      - Video ID: ${video.videoId}
+      - Published: ${videoDate}
+      - Duration: ${Math.floor(video.duration / 60)}m ${video.duration % 60}s
+      - Error: ${errorMessage}
+    `);
+
+    // Re-throw the error to be handled by the pipeline
+    throw error;
+  }
 };
 
 // Get transcript from database or fetch if not available

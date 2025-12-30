@@ -11,7 +11,8 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:seed": "bun run src/scripts/seed.ts",
-    "cache:clear": "bun run src/scripts/clear-cache.ts"
+    "cache:clear": "bun run src/scripts/clear-cache.ts",
+    "test:transcripts": "bun run src/scripts/test-transcript-improvements.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
