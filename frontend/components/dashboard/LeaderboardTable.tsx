@@ -44,7 +44,7 @@ export const LeaderboardTable = ({
         </div>
         <h3 className="mt-4 font-semibold">No YouTubers yet</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Add your first YouTuber to start tracking predictions.
+          No YouTubers are currently being tracked.
         </p>
       </div>
     );

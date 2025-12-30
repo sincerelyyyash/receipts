@@ -1,6 +1,5 @@
 'use client';
 
-import { AddChannelDialog } from '@/components/dashboard/AddChannelDialog';
 import { LeaderboardTable } from '@/components/dashboard/LeaderboardTable';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { YouTuberCard } from '@/components/dashboard/YouTuberCard';
@@ -61,21 +60,16 @@ export const DashboardContent = () => {
     fetchData();
   }, [fetchData]);
 
-  const handleChannelAdded = () => {
-    fetchData();
-  };
-
   return (
     <Container className="py-8">
       {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2">
         <div>
           <h1 className="text-3xl font-bold">Receipts</h1>
           <p className="text-muted-foreground">
             Hold YouTubers accountable for their financial predictions
           </p>
         </div>
-        <AddChannelDialog onSuccess={handleChannelAdded} />
       </div>
 
       {/* Error State */}
@@ -180,7 +174,7 @@ export const DashboardContent = () => {
                   </div>
                   <h3 className="mt-4 font-semibold">No YouTubers yet</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Add your first YouTuber to start tracking predictions.
+                    No YouTubers are currently being tracked.
                   </p>
                 </CardContent>
               </Card>

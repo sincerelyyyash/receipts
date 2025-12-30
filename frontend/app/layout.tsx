@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/react';
 import { Navbar } from '@/components/Navbar';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import type { Metadata, Viewport } from 'next';
@@ -100,6 +101,7 @@ const RootLayout = ({
             </footer>
           </div>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );
