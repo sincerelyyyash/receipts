@@ -13,9 +13,31 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://receipts.sincerelyyyash.com",
+];
+
+// If CORS_ORIGIN is set, use it (can be comma-separated list)
+if (process.env.CORS_ORIGIN) {
+  const customOrigins = process.env.CORS_ORIGIN.split(",").map((origin) =>
+    origin.trim()
+  );
+  allowedOrigins.push(...customOrigins);
+}
+
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   })
 );
