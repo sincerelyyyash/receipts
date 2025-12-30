@@ -328,3 +328,92 @@ export const isPipelineRunning = async (youtuberId: string): Promise<boolean> =>
   return ["syncing", "fetching-transcripts", "analyzing"].includes(parsed.status);
 };
 
+// Auto-analyze unanalyzed videos on server startup
+export const runStartupAnalysis = async (): Promise<void> => {
+  console.log("🔍 Checking for unanalyzed videos...");
+
+  try {
+    // Find videos with transcripts that haven't been analyzed
+    const unanalyzedVideos = await prisma.video.findMany({
+      where: {
+        transcript: { not: null },
+        analyzed: false,
+      },
+      select: {
+        id: true,
+        title: true,
+        youtuberId: true,
+        youtuber: {
+          select: { name: true },
+        },
+      },
+      orderBy: { publishedAt: "desc" },
+      take: 100, // Limit to prevent overwhelming the system
+    });
+
+    if (unanalyzedVideos.length === 0) {
+      console.log("✅ No unanalyzed videos found");
+      return;
+    }
+
+    console.log(`📊 Found ${unanalyzedVideos.length} unanalyzed videos with transcripts`);
+
+    // Group videos by YouTuber
+    const videosByYouTuber = new Map<string, typeof unanalyzedVideos>();
+    for (const video of unanalyzedVideos) {
+      const existing = videosByYouTuber.get(video.youtuberId) || [];
+      existing.push(video);
+      videosByYouTuber.set(video.youtuberId, existing);
+    }
+
+    // Queue analysis jobs for each YouTuber's videos
+    let jobsQueued = 0;
+    for (const [youtuberId, videos] of videosByYouTuber) {
+      // Check if pipeline is already running for this YouTuber
+      const isRunning = await isPipelineRunning(youtuberId);
+      if (isRunning) {
+        console.log(`⏭️  Skipping ${videos[0]?.youtuber?.name || youtuberId} - pipeline already running`);
+        continue;
+      }
+
+      // Update pipeline status
+      await updatePipelineStatus(youtuberId, {
+        status: "analyzing",
+        totalVideos: videos.length,
+        transcriptsFetched: videos.length,
+        videosAnalyzed: 0,
+        currentStep: `Auto-analyzing ${videos.length} videos on startup...`,
+        startedAt: new Date().toISOString(),
+      });
+
+      // Queue analysis jobs with delays
+      for (let i = 0; i < videos.length; i++) {
+        await addJob(
+          {
+            type: "analyze-video",
+            videoId: videos[i]!.id,
+            youtuberId,
+          },
+          { delay: (jobsQueued + i) * PIPELINE_CONFIG.delayBetweenAnalysis }
+        );
+      }
+
+      // Queue completion job
+      await addJob(
+        {
+          type: "complete-pipeline",
+          youtuberId,
+        },
+        { delay: (jobsQueued + videos.length) * PIPELINE_CONFIG.delayBetweenAnalysis + 5000 }
+      );
+
+      jobsQueued += videos.length;
+      console.log(`📦 Queued ${videos.length} analysis jobs for ${videos[0]?.youtuber?.name || youtuberId}`);
+    }
+
+    console.log(`🚀 Startup analysis: Queued ${jobsQueued} total analysis jobs`);
+  } catch (error) {
+    console.error("❌ Startup analysis error:", error);
+  }
+};
+

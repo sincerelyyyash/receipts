@@ -44,7 +44,7 @@ const videosQuerySchema = z.object({
 router.get(
   "/",
   apiLimiter,
-  cacheResponse({ ttl: CACHE_TTL.STATS }),
+  // CACHING DISABLED - cacheResponse({ ttl: CACHE_TTL.STATS }),
   asyncHandler(async (_req, res) => {
     const channels = await getAllChannels();
     res.json({
@@ -58,10 +58,10 @@ router.get(
 router.get(
   "/:id",
   apiLimiter,
-  cacheResponse({
-    ttl: CACHE_TTL.CHANNEL,
-    keyGenerator: (req) => `response:channel:${req.params.id}`,
-  }),
+  // CACHING DISABLED - cacheResponse({
+  //   ttl: CACHE_TTL.CHANNEL,
+  //   keyGenerator: (req) => `response:channel:${req.params.id}`,
+  // }),
   asyncHandler(async (req, res) => {
     const channel = await getChannelById(req.params.id!);
     const analysisStatus = await getChannelAnalysisStatus(req.params.id!);

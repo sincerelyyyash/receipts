@@ -20,6 +20,10 @@ export interface YouTuberWithAnalysis extends YouTuber {
     analyzedVideos: number;
     pendingVideos: number;
     avgScore: number | null;
+    averageAccuracy?: number | null;
+    totalPredictions?: number;
+    correctPredictions?: number;
+    accuracyPercent?: number;
   };
 }
 

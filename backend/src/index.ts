@@ -5,7 +5,7 @@ import { connectRedis, redis } from "./config/redis.ts";
 import { prisma } from "./lib/prisma.ts";
 import { errorHandler } from "./middleware/errorHandler.ts";
 import routes from "./routes/index.ts";
-import { createPipelineWorker } from "./services/pipeline.service.ts";
+import { createPipelineWorker, runStartupAnalysis } from "./services/pipeline.service.ts";
 
 let pipelineWorker: ReturnType<typeof createPipelineWorker> | null = null;
 
@@ -131,6 +131,11 @@ const startServer = async () => {
    - GET  /api/leaderboard         - Get accuracy leaderboard
    - GET  /api/leaderboard/stats   - Get platform statistics
       `);
+
+      // Run startup analysis after server is ready
+      setTimeout(() => {
+        runStartupAnalysis().catch(console.error);
+      }, 3000);
     });
   } catch (error) {
     console.error("❌ Failed to start server:", error);

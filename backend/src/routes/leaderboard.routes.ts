@@ -16,7 +16,7 @@ const router = Router();
 router.get(
   "/",
   apiLimiter,
-  cacheResponse({ ttl: CACHE_TTL.LEADERBOARD }),
+  // CACHING DISABLED - cacheResponse({ ttl: CACHE_TTL.LEADERBOARD }),
   asyncHandler(async (_req, res) => {
     const leaderboard = await getLeaderboard();
 
@@ -31,7 +31,7 @@ router.get(
 router.get(
   "/stats",
   apiLimiter,
-  cacheResponse({ ttl: CACHE_TTL.STATS }),
+  // CACHING DISABLED - cacheResponse({ ttl: CACHE_TTL.STATS }),
   asyncHandler(async (_req, res) => {
     const stats = await getStats();
 
@@ -67,7 +67,7 @@ router.get(
 router.get(
   "/trends",
   apiLimiter,
-  cacheResponse({ ttl: CACHE_TTL.STATS }),
+  // CACHING DISABLED - cacheResponse({ ttl: CACHE_TTL.STATS }),
   asyncHandler(async (req, res) => {
     const youtuberId = req.query.youtuberId as string | undefined;
     const trends = await getAccuracyTrends(youtuberId);

@@ -71,10 +71,10 @@ router.get(
 router.get(
   "/:id",
   apiLimiter,
-  cacheResponse({
-    ttl: CACHE_TTL.VIDEO_META,
-    keyGenerator: (req) => `response:video:${req.params.id}`,
-  }),
+  // CACHING DISABLED - cacheResponse({
+  //   ttl: CACHE_TTL.VIDEO_META,
+  //   keyGenerator: (req) => `response:video:${req.params.id}`,
+  // }),
   asyncHandler(async (req, res) => {
     const video = await getVideoById(req.params.id!);
 
@@ -107,10 +107,10 @@ router.post(
 router.get(
   "/:id/transcript",
   apiLimiter,
-  cacheResponse({
-    ttl: CACHE_TTL.TRANSCRIPT,
-    keyGenerator: (req) => `response:transcript:${req.params.id}`,
-  }),
+  // CACHING DISABLED - cacheResponse({
+  //   ttl: CACHE_TTL.TRANSCRIPT,
+  //   keyGenerator: (req) => `response:transcript:${req.params.id}`,
+  // }),
   asyncHandler(async (req, res) => {
     const transcript = await getTranscript(req.params.id!);
 

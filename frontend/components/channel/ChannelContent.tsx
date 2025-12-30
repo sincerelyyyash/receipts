@@ -256,7 +256,7 @@ export const ChannelContent = ({ channelId }: ChannelContentProps) => {
             <CardContent>
               <p className="text-sm text-muted-foreground">Total Videos</p>
               <p className="text-2xl font-bold">
-                {youtuber.analysisStatus.totalVideos}
+                {youtuber.analysisStatus?.totalVideos ?? 0}
               </p>
             </CardContent>
           </Card>
@@ -264,7 +264,7 @@ export const ChannelContent = ({ channelId }: ChannelContentProps) => {
             <CardContent>
               <p className="text-sm text-muted-foreground">Analyzed</p>
               <p className="text-2xl font-bold">
-                {youtuber.analysisStatus.analyzedVideos}
+                {youtuber.analysisStatus?.analyzedVideos ?? 0}
               </p>
             </CardContent>
           </Card>
@@ -272,8 +272,12 @@ export const ChannelContent = ({ channelId }: ChannelContentProps) => {
             <CardContent>
               <p className="text-sm text-muted-foreground">Avg Score</p>
               <p className="text-2xl font-bold">
-                {youtuber.analysisStatus.avgScore !== null
+                {youtuber.analysisStatus?.avgScore != null &&
+                typeof youtuber.analysisStatus.avgScore === 'number'
                   ? `${youtuber.analysisStatus.avgScore.toFixed(1)}%`
+                  : youtuber.analysisStatus?.averageAccuracy != null &&
+                    typeof youtuber.analysisStatus.averageAccuracy === 'number'
+                  ? `${youtuber.analysisStatus.averageAccuracy.toFixed(1)}%`
                   : 'N/A'}
               </p>
             </CardContent>
