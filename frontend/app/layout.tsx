@@ -84,7 +84,7 @@ const RootLayout = ({
             <Navbar />
             <main className="flex-1">{children}</main>
             <footer className="border-t py-6">
-              <div className="container mx-auto max-w-6xl px-4 text-center text-sm text-muted-foreground">
+              <div className="mx-auto w-full max-w-6xl px-4 text-center text-sm text-muted-foreground">
                 <p>&copy; {new Date().getFullYear()} Receipts. All rights reserved.</p>
                 <p className="mt-1">
                   Built by{' '}

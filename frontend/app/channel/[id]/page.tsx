@@ -15,7 +15,8 @@ export const generateMetadata = async ({
 
     try {
     const response = await fetch(`${API_BASE_URL}/channels/${id}`, {
-      next: { revalidate: 60 }, // Cache for 60 seconds
+      next: { revalidate: 0 }, // No cache - always fetch fresh data
+      cache: 'no-store', // Disable Next.js caching
     });
 
     if (!response.ok) {

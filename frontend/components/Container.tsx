@@ -10,7 +10,7 @@ export const Container = ({ children, className }: ContainerProps) => {
   return (
     <div
       className={cn(
-        'container mx-auto max-w-6xl px-4 animate-fade-in-blur',
+        'mx-auto w-full max-w-6xl px-4 animate-fade-in-blur',
         className,
       )}
     >
