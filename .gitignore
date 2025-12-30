@@ -1,8 +1,7 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-/.pnp
+# Dependencies
+node_modules/
+**/node_modules/
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -10,32 +9,131 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
+# Bun
+bun.lockb
+**/bun.lockb
 
-# next.js
-/.next/
-/out/
+# Testing
+coverage/
+**/coverage/
+*.lcov
+.nyc_output
 
-# production
-/build
+# Next.js
+.next/
+**/.next/
+out/
+**/out/
+.vercel
+**/.vercel
+.next
+**/.next
 
-# misc
-.DS_Store
-*.pem
+# Production builds
+build/
+**/build/
+dist/
+**/dist/
+*.tgz
 
-# debug
+# Environment variables
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!.env*.example
+**/.env.example
+**/.env*.example
+
+# Logs
+logs/
+**/logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+**/.DS_Store
 
-# vercel
-.vercel
+# IDE files
+.vscode/
+**/.vscode/
+.idea/
+**/.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
 
-# typescript
+# TypeScript
 *.tsbuildinfo
+**/*.tsbuildinfo
 next-env.d.ts
+**/next-env.d.ts
+
+# Prisma
+**/prisma/migrations/
+**/src/generated/prisma/
+prisma/migrations/
+
+# Cache
+.cache/
+**/.cache/
+.eslintcache
+**/.eslintcache
+.parcel-cache/
+**/.parcel-cache/
+.turbo/
+**/.turbo/
+.remix/
+**/.remix/
+
+# Docker
+docker-compose.override.yml
+*.pid
+*.seed
+*.pid.lock
+
+# Redis
+dump.rdb
+*.rdb
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Misc
+*.pem
+.cursor/
+**/.cursor/
+*.plan.md
+**/*.plan.md
+
+# Build artifacts
+*.map
+**/*.map
+*.min.js
+**/*.min.js
+
+# Package manager locks (keep bun.lock, ignore others)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

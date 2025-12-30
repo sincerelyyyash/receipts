@@ -1,0 +1,8 @@
+# Example channels file
+# Add one YouTube channel URL per line
+# Supports both @handle and channel ID formats
+
+https://www.youtube.com/@GrahamStephan
+https://www.youtube.com/@MeetKevin
+https://www.youtube.com/@AndreiJikh
+
